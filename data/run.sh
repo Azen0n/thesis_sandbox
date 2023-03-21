@@ -1,7 +1,7 @@
 #!/bin/bash
 
-printf "$1" > tests.txt
-printf "$2" > code.py
+echo -e "$1" > tests.txt
+echo -e "$2" > code.py
 
 while read -r input
 do

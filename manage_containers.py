@@ -8,36 +8,44 @@ from docker.models.containers import Container
 client = docker.from_env()
 
 
-def run_container(tests: str, code: str) -> tuple[int, str | None]:
+def run_code_with_tests(tests: str, code: str) -> tuple[int, str | None]:
     """Запускает код пользователя внутри Docker контейнера и проверяет его
     на тестах.
     Все тесты пройдены — возвращает 0, None.
     Тест не пройден — возвращает номер теста, None.
     Ошибка во время теста — возвращает номер теста, Traceback ошибки.
     """
-    image_id = build_image(dockerfile='./')
-    container = create_container(image=image_id)
-    result = container.exec_run(cmd=f'/bin/sh run.sh "{tests}" "{code}"')
-    container.stop()
-    client.images.get(image_id).remove(force=True)
-    logs = result.output.decode('utf-8')
+    logs = run_container(f'/bin/sh run.sh "{tests}" "{code}"')
     if not logs:
         raise Exception('Неизвестная ошибка во время проверки кода.')
-    failed_test, error = parse_logs(logs)
+    failed_test, error = parse_tests_logs(logs)
     return failed_test, error
 
 
-def write_files(tests: str, code: str):
-    """Записывает тесты и код пользователя в соответствующие файлы."""
+def run_code_with_stdin(stdin: str, code: str) -> tuple[str, str]:
+    """Запускает код пользователя внутри Docker контейнера на переданных
+    входных данных.
+    Возвращает stdout и Traceback ошибки.
+    """
+    logs = run_container(f'/bin/sh run_stdin.sh "{stdin}" "{code}"')
+    if not logs:
+        raise Exception('Неизвестная ошибка во время проверки кода.')
     try:
-        tests = re.sub(r'\\n', '\n', tests)
-        code = re.sub(r'\\n', '\n', code)
-        with open('data/tests.txt', 'w') as f:
-            f.write(tests)
-        with open('data/code.py', 'w') as f:
-            f.write(code)
-    except OSError as e:
-        raise Exception(f'{e}')
+        stdout, stderr = parse_stdout_or_stderr_logs(logs)
+    except ValueError:
+        raise
+    return stdout, stderr
+
+
+def run_container(cmd: str) -> str:
+    """Запускает контейнер, выполняет команду и возвращает логи."""
+    image_id = build_image(dockerfile='./')
+    container = create_container(image=image_id)
+    result = container.exec_run(cmd=cmd)
+    container.stop()
+    client.images.get(image_id).remove(force=True)
+    logs = result.output.decode('utf-8')
+    return logs
 
 
 def build_image(dockerfile: str) -> str:
@@ -73,7 +81,7 @@ class Status(enum.Enum):
     ERROR = 'ERROR'
 
 
-def parse_logs(logs: str) -> tuple[int, str | None]:
+def parse_tests_logs(logs: str) -> tuple[int, str | None]:
     """Все тесты пройдены (PASSED) — возвращает 0, None.
     Тест не пройден (FAILED) — возвращает номер теста, None.
     Ошибка во время теста (ERROR) — возвращает номер теста, Traceback ошибки.
@@ -87,12 +95,12 @@ def parse_logs(logs: str) -> tuple[int, str | None]:
     return 0, None
 
 
-def main():
-    tests = r'2,5,\n5.0\n1,9,\n4.5\n3,10,\n15.0\n'
-    code = r'x = int(input())\ny = int(input())\nprint(x * y / 2)\n'
-    failed_test, error = run_container(tests, code)
-    print(failed_test, error)
-
-
-if __name__ == '__main__':
-    main()
+def parse_stdout_or_stderr_logs(logs: str) -> tuple[str, str]:
+    """Возвращает stdout и stderr (Traceback ошибки)."""
+    pattern = r'(?:\[OUTPUT\]\n(?P<output>[\s\S]+)?)|(?:\[ERROR\]\n(?P<error>[\s\S]+)?)'
+    for match in re.finditer(pattern, logs):
+        if match.group('error') is not None:
+            return '', match.group('error')
+        if match.group('output') is not None:
+            return match.group('output'), ''
+    raise ValueError('Неизвестный формат stdout.')
