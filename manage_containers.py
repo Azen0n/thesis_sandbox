@@ -1,5 +1,6 @@
-import enum
+from enum import Enum
 import re
+from dataclasses import dataclass
 
 import docker
 from docker.errors import BuildError, APIError, ContainerError, ImageNotFound
@@ -8,33 +9,73 @@ from docker.models.containers import Container
 client = docker.from_env()
 
 
-def run_code_with_tests(tests: str, code: str) -> tuple[int, str | None]:
+class ResultCode(Enum):
+    OK = 'OK'
+    CE = 'Compilation error'
+    WA = 'Wrong answer'
+    TL = 'Time-limit exceeded'
+    ML = 'Memory limit exceeded'
+
+
+@dataclass
+class ResultResponse:
+    """Результат запуска кода на входных данных или тестах. Неиспользованные
+    поля остаются пустыми.
+
+    :cvar stdout: вывод в консоль во время запуска кода,
+    :cvar stderr: Traceback ошибки во время запуска кода,
+    :cvar code: код запуска,
+    :cvar test: номер проваленного теста,
+    :cvar error: ошибка при запуске контейнера.
+    """
+    stdout: str = ''
+    stderr: str = ''
+    code: ResultCode = ''
+    test: int = ''
+    error: str = ''
+
+    def to_dict(self):
+        code = self.code.value if type(self.code) == ResultCode else ''
+        return {
+            'stdout': self.stdout,
+            'stderr': self.stderr,
+            'code': code,
+            'test': self.test,
+            'error': self.error
+        }
+
+
+def run_code_with_tests(tests: str, code: str) -> ResultResponse:
     """Запускает код пользователя внутри Docker контейнера и проверяет его
     на тестах.
-    Все тесты пройдены — возвращает 0, None.
-    Тест не пройден — возвращает номер теста, None.
-    Ошибка во время теста — возвращает номер теста, Traceback ошибки.
+
+    Возвращает ResultResponse
     """
     logs = run_container(f'/bin/sh run.sh "{tests}" "{code}"')
     if not logs:
-        raise Exception('Неизвестная ошибка во время проверки кода.')
-    failed_test, error = parse_tests_logs(logs)
-    return failed_test, error
+        return ResultResponse(error='Неизвестная ошибка во время проверки кода')
+    failed_test, stderr = parse_tests_logs(logs)
+    if failed_test == 0:
+        return ResultResponse(code=ResultCode.OK)
+    if not stderr:
+        return ResultResponse(code=ResultCode.WA, test=failed_test)
+    return ResultResponse(stderr=stderr, code=ResultCode.CE, test=failed_test)
 
 
-def run_code_with_stdin(stdin: str, code: str) -> tuple[str, str]:
+def run_code_with_stdin(stdin: str, code: str) -> ResultResponse:
     """Запускает код пользователя внутри Docker контейнера на переданных
     входных данных.
-    Возвращает stdout и Traceback ошибки.
     """
     logs = run_container(f'/bin/sh run_stdin.sh "{stdin}" "{code}"')
     if not logs:
-        raise Exception('Неизвестная ошибка во время проверки кода.')
+        return ResultResponse(error='Неизвестная ошибка во время запуска кода')
     try:
         stdout, stderr = parse_stdout_or_stderr_logs(logs)
-    except ValueError:
-        raise
-    return stdout, stderr
+    except ValueError as e:
+        return ResultResponse(error=f'{e}')
+    if stderr:
+        ResultResponse(stderr=stderr, code=ResultCode.CE)
+    return ResultResponse(stdout=stdout, code=ResultCode.OK)
 
 
 def run_container(cmd: str) -> str:
@@ -75,24 +116,24 @@ def create_container(image: str) -> Container:
     return container
 
 
-class Status(enum.Enum):
+class Status(Enum):
     PASSED = 'PASSED'
     FAILED = 'FAILED'
     ERROR = 'ERROR'
 
 
-def parse_tests_logs(logs: str) -> tuple[int, str | None]:
-    """Все тесты пройдены (PASSED) — возвращает 0, None.
-    Тест не пройден (FAILED) — возвращает номер теста, None.
-    Ошибка во время теста (ERROR) — возвращает номер теста, Traceback ошибки.
+def parse_tests_logs(logs: str) -> tuple[int, str]:
+    """Все тесты пройдены (PASSED) — возвращает 0 и пустую строку.
+    Тест не пройден (FAILED) — возвращает номер теста и пустую строку.
+    Ошибка во время теста (ERROR) — возвращает номер теста и Traceback ошибки.
     """
     pattern = r'\[(?P<status>.+?)\].+\n(?P<traceback>Traceback[\s\S]+)?'
     for i, test in enumerate(re.finditer(pattern, logs), start=1):
         if test.group('status') == Status.FAILED.value:
-            return i, None
+            return i, ''
         if test.group('status') == Status.ERROR.value:
             return i, test.group('traceback')
-    return 0, None
+    return 0, ''
 
 
 def parse_stdout_or_stderr_logs(logs: str) -> tuple[str, str]:
@@ -103,4 +144,4 @@ def parse_stdout_or_stderr_logs(logs: str) -> tuple[str, str]:
             return '', match.group('error')
         if match.group('output') is not None:
             return match.group('output'), ''
-    raise ValueError('Неизвестный формат stdout.')
+    raise ValueError('Неизвестный формат stdout')

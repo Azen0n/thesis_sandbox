@@ -1,4 +1,6 @@
 ## Installation
+1. Install gVisor as a Docker runtime following the [user guide](https://gvisor.dev/docs/user_guide/install/)
+2. Install Python requirements
 ```shell
 pip install -r requirements.txt
 ```
