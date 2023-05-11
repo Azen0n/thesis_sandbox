@@ -1,4 +1,5 @@
 from time import sleep
+from urllib.parse import unquote
 
 import uvicorn
 from celery import Celery
@@ -23,10 +24,20 @@ class TestCode(BaseModel):
     tests: str
     code: str
 
+    def __init__(self, **data):
+        data['tests'] = unquote(data['tests'])
+        data['code'] = unquote(data['code'])
+        super().__init__(**data)
+
 
 class RunCode(BaseModel):
     stdin: str
     code: str
+
+    def __init__(self, **data):
+        data['stdin'] = unquote(data['stdin'])
+        data['code'] = unquote(data['code'])
+        super().__init__(**data)
 
 
 @app.post('/run_tests')

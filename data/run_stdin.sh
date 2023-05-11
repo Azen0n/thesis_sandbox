@@ -4,11 +4,12 @@ echo -e "$2" > code.py
 
 input=${1//,/\\n}
 
-echo -e "$input" | python code.py > output.txt 2> error.txt
+echo -e "$input" | timeout 5s python code.py > output.txt 2> error.txt
 
 if [ -z "$(cat error.txt)" ]; then
   echo "[OUTPUT]"
   cat output.txt
+
 else
   echo "[ERROR]"
   cat error.txt
