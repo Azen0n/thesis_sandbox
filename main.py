@@ -3,10 +3,12 @@ from urllib.parse import unquote
 
 import uvicorn
 from celery import Celery
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from fastapi.openapi.models import APIKey
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from auth import get_api_key
 from manage_containers import run_code_with_tests, run_code_with_stdin
 
 app = FastAPI()
@@ -41,7 +43,7 @@ class RunCode(BaseModel):
 
 
 @app.post('/run_tests')
-async def run_tests(test_code: TestCode) -> JSONResponse:
+async def run_tests(test_code: TestCode, api_key: APIKey = Depends(get_api_key)) -> JSONResponse:
     """Проверяет код пользователя внутри Docker контейнера на тестах
     и возвращает ResultResponse.
     """
@@ -54,7 +56,7 @@ async def run_tests(test_code: TestCode) -> JSONResponse:
 
 
 @app.post('/run_stdin')
-def run_stdin(run_code: RunCode) -> JSONResponse:
+def run_stdin(run_code: RunCode, api_key: APIKey = Depends(get_api_key)) -> JSONResponse:
     """Запускает код пользователя внутри Docker контейнера на переданных
     входных данных и возвращает ResultResponse.
     """
