@@ -55,9 +55,13 @@ def run_code_with_tests(tests: str, code: str) -> ResultResponse:
         return ResultResponse(error='Неизвестная ошибка во время проверки кода')
     failed_test, stderr = parse_tests_logs(logs)
     if failed_test == 0:
-        return ResultResponse(code=ResultCode.OK)
+        if is_all_tests_clear(tests, logs):
+            return ResultResponse(code=ResultCode.OK)
+        return ResultResponse(error='Неизвестная ошибка во время проверки кода')
     if stderr == 'timeout':
         return ResultResponse(stderr=stderr, code=ResultCode.TL, test=failed_test)
+    if stderr == 'memory limit exceeded':
+        return ResultResponse(stderr=stderr, code=ResultCode.ML)
     if stderr:
         return ResultResponse(stderr=stderr, code=ResultCode.CE, test=failed_test)
     return ResultResponse(code=ResultCode.WA, test=failed_test)
@@ -76,6 +80,8 @@ def run_code_with_stdin(stdin: str, code: str) -> ResultResponse:
         return ResultResponse(error=f'{e}')
     if stderr == 'timeout':
         return ResultResponse(stderr=stderr, code=ResultCode.TL)
+    if stderr == 'memory limit exceeded':
+        return ResultResponse(stderr=stderr, code=ResultCode.ML)
     elif stderr:
         return ResultResponse(stderr=stderr, code=ResultCode.CE)
     return ResultResponse(stdout=stdout, code=ResultCode.OK)
@@ -140,6 +146,8 @@ def parse_tests_logs(logs: str) -> tuple[int, str]:
             if is_timeout(test, logs):
                 return i, 'timeout'
             return i, test.group('traceback')
+    if 'containerManager.WaitPID' in logs:
+        return -1, 'memory limit exceeded'
     return 0, ''
 
 
@@ -149,6 +157,13 @@ def is_timeout(test: Match, logs: str) -> bool:
     if error_start_pos - 12 >= 0:
         return logs[error_start_pos - 12:error_start_pos - 2] == 'Terminated'
     return False
+
+
+def is_all_tests_clear(tests: str, logs: str) -> bool:
+    """Возвращает True, если пройдены все тесты."""
+    number_of_tests = int(len(tests.split('\n')) / 2)
+    number_of_succeeded_tests = len(re.findall(r'\[PASSED\]', logs))
+    return number_of_tests == number_of_succeeded_tests
 
 
 def parse_stdout_or_stderr_logs(logs: str) -> tuple[str, str]:
@@ -163,4 +178,6 @@ def parse_stdout_or_stderr_logs(logs: str) -> tuple[str, str]:
             return match.group('output'), ''
         if match.group('timeout') is not None:
             return '', 'timeout'
+    if 'containerManager.WaitPID' in logs:
+        return '', 'memory limit exceeded'
     raise ValueError('Неизвестный формат stdout')
