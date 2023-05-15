@@ -171,13 +171,18 @@ def parse_stdout_or_stderr_logs(logs: str) -> tuple[str, str]:
     pattern = (r'(?:\[OUTPUT\]\n(?P<output>[\s\S]+)?)'
                r'|(?:\[ERROR\]\n(?P<error>[\s\S]+)?)'
                r'|(?:Terminated\n(?P<timeout>[\s\S]+)?)')
+    output = None
     for match in re.finditer(pattern, logs):
         if match.group('error') is not None:
             return '', match.group('error')
-        if match.group('output') is not None:
-            return match.group('output'), ''
         if match.group('timeout') is not None:
             return '', 'timeout'
+        if match.group('output') is not None:
+            output = match.group('output')
+        if match.group('output') is None:
+            output = ''
     if 'containerManager.WaitPID' in logs:
         return '', 'memory limit exceeded'
+    if output is not None:
+        return output, ''
     raise ValueError('Неизвестный формат stdout')
