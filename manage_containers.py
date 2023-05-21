@@ -161,7 +161,7 @@ def is_timeout(test: Match, logs: str) -> bool:
 
 def is_all_tests_clear(tests: str, logs: str) -> bool:
     """Возвращает True, если пройдены все тесты."""
-    number_of_tests = int(len(tests.split('\n')) / 2)
+    number_of_tests = int(len(tests.split(r'\n')) / 2)
     number_of_succeeded_tests = len(re.findall(r'\[PASSED\]', logs))
     return number_of_tests == number_of_succeeded_tests
 

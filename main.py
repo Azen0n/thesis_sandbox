@@ -1,3 +1,4 @@
+import json
 from time import sleep
 from urllib.parse import unquote
 
@@ -28,7 +29,9 @@ class TestCode(BaseModel):
 
     def __init__(self, **data):
         data['tests'] = unquote(data['tests'])
+        data['tests'] = json.dumps(data['tests']).strip('"')
         data['code'] = unquote(data['code'])
+        data['code'] = json.dumps(data['code']).strip('"')
         super().__init__(**data)
 
 
@@ -38,7 +41,9 @@ class RunCode(BaseModel):
 
     def __init__(self, **data):
         data['stdin'] = unquote(data['stdin'])
+        data['stdin'] = json.dumps(data['stdin']).strip('"')
         data['code'] = unquote(data['code'])
+        data['code'] = json.dumps(data['code']).strip('"')
         super().__init__(**data)
 
 
